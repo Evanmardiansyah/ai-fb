@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Content Intelligence System</title>
-    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
-    <link href="[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css)" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .loader { border-top-color: #f97316; -webkit-animation: spinner 1s linear infinite; animation: spinner 1s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -39,9 +39,12 @@
                 
                 <div class="mb-4">
                     <label class="block text-sm font-bold mb-2 text-slate-700">Model AI</label>
-                    <select id="modelSelect" class="w-full border-2 border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:border-orange-500 transition bg-white text-slate-700">
-                        <option value="">Masukkan API Key dulu...</option>
-                    </select>
+                    <div class="relative">
+                        <select id="modelSelect" class="w-full border-2 border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:border-orange-500 transition bg-white text-slate-700 appearance-none">
+                            <option value="">Masukkan API Key dulu...</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down absolute right-4 top-4 text-slate-400 pointer-events-none"></i>
+                    </div>
                 </div>
 
                 <div class="mb-4">
@@ -82,8 +85,7 @@
                     <pre id="jsonDebug" class="p-4 bg-slate-900 text-green-400 rounded-xl text-sm overflow-x-auto shadow-inner"></pre>
                 </div>
 
-                <div id="visualOutput" class="space-y-4">
-                    </div>
+                <div id="visualOutput" class="space-y-4"></div>
             </div>
 
         </section>
@@ -125,7 +127,7 @@
                 
                 const data = await response.json();
                 
-                // Filter model yang mensupport text generation (seperti flash, pro)
+                // Filter model yang mensupport text generation
                 const textModels = data.models.filter(model => 
                     model.supportedGenerationMethods.includes("generateContent")
                 );
@@ -209,7 +211,7 @@ ATURAN WAJIB:
                             parts: [{ text: `Niche user: ${niche}` }] 
                         }],
                         generationConfig: {
-                            responseMimeType: "application/json", // Memaksa format JSON dari Gemini
+                            responseMimeType: "application/json",
                             temperature: 0.7
                         }
                     })
@@ -223,7 +225,7 @@ ATURAN WAJIB:
                 const data = await response.json();
                 let jsonText = data.candidates[0].content.parts[0].text;
                 
-                // Pembersihan keamanan: Kadang AI tetap menyelipkan tag markdown ```json
+                // Membersihkan markdown ```json jika Gemini menampilkannya
                 jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
                 
                 // Parsing hasil
