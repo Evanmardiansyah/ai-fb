@@ -197,6 +197,11 @@
             border-color: var(--primary-color);
             box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
         }
+        
+        .form-control:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
         /* Api Key Box Styling */
         .api-key-box {
@@ -205,6 +210,12 @@
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 25px;
+        }
+        
+        .api-input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
         }
 
         /* Buttons */
@@ -466,13 +477,26 @@
                     <form id="aiForm" onsubmit="handleGenerate(event)">
                         
                         <div class="api-key-box">
-                            <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-main); font-weight: 600;">
-                                <i class="fa-solid fa-key" style="color: var(--primary-color);"></i> Gemini API Key (Wajib)
+                            <label style="display: block; font-size: 0.9rem; color: var(--text-main); font-weight: 600;">
+                                <i class="fa-solid fa-key" style="color: var(--primary-color);"></i> Konfigurasi API Server
                             </label>
-                            <input type="password" id="apiKey" class="form-control" placeholder="AIzaSy..." required autocomplete="off">
-                            <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 8px; display: block;">
-                                *Key tidak disimpan di server, hanya dijalankan langsung dari browser Anda.
+                            
+                            <div class="api-input-group">
+                                <input type="password" id="apiKey" class="form-control" placeholder="Masukkan Gemini API Key..." required autocomplete="off">
+                                <button type="button" class="btn btn-outline" style="width: auto; padding: 0 15px;" onclick="saveApiKey()" title="Simpan Key">
+                                    Simpan
+                                </button>
+                            </div>
+                            <small id="key-status" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 8px; display: block;">
+                                *Key tidak disimpan di server, hanya di browser Anda.
                             </small>
+
+                            <div class="form-group" style="margin-top: 15px; margin-bottom: 0;">
+                                <label style="font-size: 0.8rem;">Pilih AI Model (Auto-Fetch)</label>
+                                <select id="modelSelect" class="form-control" style="padding: 8px 12px; font-size: 0.85rem;" disabled>
+                                    <option value="">Menunggu API Key...</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -659,6 +683,81 @@
     </div>
 
     <script>
+        // Init: Check local storage for saved API Key when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('viral_studio_api_key');
+            if (savedKey) {
+                document.getElementById('apiKey').value = savedKey;
+                const statusEl = document.getElementById('key-status');
+                statusEl.innerText = "✓ API Key dimuat. Sedang mengambil daftar model...";
+                statusEl.style.color = "var(--success)";
+                fetchAvailableModels(savedKey); // Auto-fetch model
+            }
+        });
+
+        // Save API Key & Fetch Models
+        function saveApiKey() {
+            const keyInput = document.getElementById('apiKey').value.trim();
+            const statusEl = document.getElementById('key-status');
+            
+            if (keyInput) {
+                localStorage.setItem('viral_studio_api_key', keyInput);
+                statusEl.innerText = "✓ Menyimpan & Mengambil daftar model...";
+                statusEl.style.color = "var(--success)";
+                fetchAvailableModels(keyInput);
+            } else {
+                statusEl.innerText = "✗ Masukkan API Key terlebih dahulu.";
+                statusEl.style.color = "#ef4444";
+            }
+        }
+
+        // Fetch Dynamic Models from Google API
+        async function fetchAvailableModels(apiKey) {
+            const selectEl = document.getElementById('modelSelect');
+            const statusEl = document.getElementById('key-status');
+            
+            selectEl.innerHTML = '<option value="">Memuat model dari server...</option>';
+            selectEl.disabled = true;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+                const data = await response.json();
+
+                if (data.error) throw new Error(data.error.message);
+
+                selectEl.innerHTML = '';
+                
+                // Filter models that support generateContent and contain "gemini"
+                const validModels = data.models.filter(m => 
+                    m.supportedGenerationMethods && 
+                    m.supportedGenerationMethods.includes('generateContent') &&
+                    m.name.includes('gemini')
+                );
+
+                if (validModels.length === 0) {
+                    selectEl.innerHTML = '<option value="">Tidak ada model tersedia di API Key ini</option>';
+                    statusEl.innerText = "✗ API Key valid tapi tidak punya akses model generateContent.";
+                    statusEl.style.color = "#f59e0b";
+                } else {
+                    validModels.forEach(m => {
+                        const option = document.createElement('option');
+                        option.value = m.name; // Formatnya selalu 'models/nama-model'
+                        option.textContent = `${m.displayName} (${m.version})`;
+                        selectEl.appendChild(option);
+                    });
+                    selectEl.disabled = false;
+                    statusEl.innerText = `✓ Berhasil memuat ${validModels.length} model!`;
+                    statusEl.style.color = "var(--success)";
+                }
+
+            } catch (error) {
+                selectEl.innerHTML = '<option value="">Gagal memuat model</option>';
+                statusEl.innerText = "✗ API Key tidak valid / Error mengambil data.";
+                statusEl.style.color = "#ef4444";
+                console.error("Model Fetch Error: ", error);
+            }
+        }
+
         // Theme Toggle
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
@@ -677,7 +776,7 @@
             const el = document.getElementById(elementId);
             let text = el.innerText;
             navigator.clipboard.writeText(text).then(() => {
-                alert('Copied to clipboard!');
+                alert('Berhasil dicopy ke clipboard!');
             });
         }
 
@@ -708,11 +807,18 @@
         async function handleGenerate(e) {
             if(e) e.preventDefault();
             
-            // Get Dynamic API Key from Input
+            // Get API Key and Model
             const userApiKey = document.getElementById('apiKey').value.trim();
+            const selectedModel = document.getElementById('modelSelect').value; // value is like 'models/gemini-1.5-flash'
+
             if (!userApiKey) {
                 alert("Silakan masukkan Gemini API Key terlebih dahulu!");
                 document.getElementById('apiKey').focus();
+                return;
+            }
+
+            if (!selectedModel) {
+                alert("Silakan tunggu / pastikan model AI sudah ter-load!");
                 return;
             }
 
@@ -774,8 +880,8 @@ PENTING: Anda HARUS merespon HANYA dengan format JSON yang valid. Jangan gunakan
 }`;
 
             try {
-                // Fetch using dynamic API Key
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`, {
+                // Fetch using Dynamic Model Endpoint
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${userApiKey}`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -818,7 +924,8 @@ PENTING: Anda HARUS merespon HANYA dengan format JSON yang valid. Jangan gunakan
                 animateBars(result.viralScore || 80, result.engagementScore || 75, result.emotionScore || 85);
 
             } catch (error) {
-                alert("Terjadi kesalahan: " + error.message + "\n\nPastikan API Key Anda valid dan limit belum habis.");
+                alert("Terjadi kesalahan:\n" + error.message + "\n\nPastikan API Key Anda valid, limit belum habis, dan format JSON dari AI sesuai.");
+                console.error("Generation Error:", error);
                 loader.style.display = 'none';
             } finally {
                 btn.disabled = false;
