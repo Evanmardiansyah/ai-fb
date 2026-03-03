@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FB Content Generator AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <header class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 class="text-2xl font-bold"><i class="fa-brands fa-facebook"></i> Viral AI Generator</h1>
+            <div class="flex w-full md:w-auto gap-2">
+                <input type="password" id="apiKey" placeholder="Masukkan Gemini API Key..." class="px-3 py-2 rounded text-black w-full md:w-64 text-sm focus:outline-none">
+                <button onclick="saveApiKey()" class="bg-blue-800 hover:bg-blue-900 px-4 py-2 rounded text-sm transition">Simpan</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <aside class="bg-white p-4 rounded-lg shadow-md h-fit">
+            <h2 class="font-bold text-lg mb-4 border-b pb-2">History</h2>
+            <div id="historyList" class="space-y-2 max-h-[600px] overflow-y-auto text-sm">
+                </div>
+            <button onclick="clearHistory()" class="mt-4 w-full text-red-500 text-xs hover:underline">Hapus History</button>
+        </aside>
+
+        <section class="lg:col-span-3 space-y-6">
+            
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-2">Niche / Topik</label>
+                        <input type="text" id="nicheInput" placeholder="Misal: Tips Diet Keto, Bisnis Properti..." class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-2">Jumlah Hashtag</label>
+                        <input type="number" id="hashtagCount" value="5" min="1" max="15" class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-bold mb-2">Mode Generator</label>
+                    <select id="modeSelect" class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-500">
+                        <option value="1">Mode 1: Idea Generator (Hasilkan Ide Saja)</option>
+                        <option value="3">Mode 3: Full Auto (Langsung Konten Lengkap)</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="generateBtn" onclick="generateContent()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition flex items-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Generate
+                    </button>
+                </div>
+            </div>
+
+            <div id="loadingIndicator" class="hidden text-center py-8">
+                <div class="loader border-4 border-gray-200 rounded-full w-12 h-12 mx-auto mb-4"></div>
+                <p class="text-gray-500 animate-pulse">AI sedang meracik konten viral...</p>
+            </div>
+
+            <div id="outputContainer" class="hidden bg-white p-6 rounded-lg shadow-md">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-xl font-bold" id="outputTitle">Hasil Generate</h2>
+                    <button onclick="copyToClipboard()" class="text-gray-500 hover:text-blue-600" title="Copy JSON"><i class="fa-regular fa-copy"></i></button>
+                </div>
+                <div id="outputContent" class="space-y-4"></div>
+                <pre id="jsonDebug" class="hidden mt-6 p-4 bg-gray-900 text-green-400 rounded text-xs overflow-x-auto"></pre>
+            </div>
+
+        </section>
+    </main>
+
+    <script>
+        // --- State Management ---
+        let currentMode = "1";
+        let historyData = JSON.parse(localStorage.getItem('fbGenHistory')) || [];
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('geminiApiKey');
+            if (savedKey) document.getElementById('apiKey').value = savedKey;
+            renderHistory();
+        });
+
+        function saveApiKey() {
+            const key = document.getElementById('apiKey').value;
+            localStorage.setItem('geminiApiKey', key);
+            alert('API Key tersimpan di browser!');
+        }
+
+        // --- API Call Helper ---
+        async function callGemini(prompt, isMode1) {
+            const apiKey = localStorage.getItem('geminiApiKey');
+            if (!apiKey) throw new Error("API Key belum diisi!");
+
+            // Define JSON schema strictly to force AI compliance
+            const schema = isMode1 ? {
+                type: "object",
+                properties: {
+                    daftar_ide: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                judul_ide: {type: "string"}, format_viral: {type: "string"}, angle: {type: "string"}, curiosity_gap: {type: "string"}, potensi_engagement: {type: "string"}
+                            }
+                        }
+                    }
+                }
+            } : {
+                type: "object",
+                properties: {
+                    format_viral_dipakai: {type: "string"}, judul: {type: "string"}, curiosity_gap_hook: {type: "string"},
+                    isi_konten_nice: {
+                        type: "object",
+                        properties: { new: {type: "string"}, interesting: {type: "string"}, clear: {type: "string"}, engaging: {type: "string"} }
+                    },
+                    versi_dengan_emoji_optimal: {type: "string"}, ringkasan_caption: {type: "string"}, cta: {type: "string"},
+                    hashtag: {type: "array", items: {type: "string"}},
+                    ide_konten_lanjutan: {type: "array", items: {type: "string"}},
+                    prompt_gambar: {type: "string"}
+                }
+            };
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        response_mime_type: "application/json",
+                        response_schema: schema,
+                        temperature: 0.7
+                    }
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            
+            const rawText = data.candidates[0].content.parts[0].text;
+            return JSON.parse(rawText);
+        }
+
+        // --- Main Generation Logic ---
+        async function generateContent(modeOverride = null, ideaData = null) {
+            const niche = document.getElementById('nicheInput').value;
+            const hashtagCount = document.getElementById('hashtagCount').value;
+            const mode = modeOverride || document.getElementById('modeSelect').value;
+
+            if (!niche && !ideaData) return alert("Masukkan Niche/Topik terlebih dahulu!");
+
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('outputContainer').classList.add('hidden');
+            document.getElementById('generateBtn').disabled = true;
+
+            try {
+                let prompt = "";
+                let resultJSON = null;
+                let isMode1 = false;
+
+                if (mode === "1") {
+                    isMode1 = true;
+                    prompt = `Anda adalah ahli pembuat konten viral Facebook. Niche: ${niche}. 
+                    Tugas: Hasilkan 5-7 ide konten viral.
+                    Fitur Wajib: SEO friendly, Engagement oriented, tidak generik.`;
+                    
+                    resultJSON = await callGemini(prompt, true);
+                    renderMode1(resultJSON);
+                    saveHistory(niche, "Mode 1: Ide", resultJSON);
+
+                } else if (mode === "2") {
+                    // Mode 2 is triggered from Mode 1 UI
+                    prompt = `Kembangkan ide konten Facebook berikut: ${JSON.stringify(ideaData)}. 
+                    Jumlah hashtag: ${hashtagCount}.
+                    Aturan:
+                    - Gunakan struktur konten NICE (New, Interesting, Clear, Engaging).
+                    - Gunakan Auto emoji optimizer (relevan, tidak berlebihan).
+                    - Auto CTA generator sesuai tone konten.
+                    - Buat prompt gambar detail dan sinematik untuk Midjourney/DALL-E.
+                    - Harus SEO friendly & engagement oriented.`;
+
+                    resultJSON = await callGemini(prompt, false);
+                    renderMode23(resultJSON);
+                    saveHistory(ideaData.judul_ide, "Mode 2: Dikembangkan", resultJSON);
+
+                } else if (mode === "3") {
+                    prompt = `Buat konten Facebook viral secara Auto dari Niche: ${niche}.
+                    Jumlah hashtag: ${hashtagCount}.
+                    Aturan:
+                    - Pilih 1 ide sangat viral, kembangkan memakai struktur NICE (New, Interesting, Clear, Engaging).
+                    - Gunakan Auto emoji optimizer (relevan, tidak berlebihan).
+                    - Auto CTA generator sesuai tone.
+                    - Buat prompt gambar detail dan sinematik.
+                    - Harus SEO friendly & engagement oriented.`;
+
+                    resultJSON = await callGemini(prompt, false);
+                    renderMode23(resultJSON);
+                    saveHistory(niche, "Mode 3: Full Auto", resultJSON);
+                }
+
+                document.getElementById('jsonDebug').textContent = JSON.stringify(resultJSON, null, 2);
+                document.getElementById('jsonDebug').classList.remove('hidden');
+
+            } catch (error) {
+                alert("Error: " + error.message);
+                console.error(error);
+            } finally {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                document.getElementById('outputContainer').classList.remove('hidden');
+                document.getElementById('generateBtn').disabled = false;
+            }
+        }
+
+        // --- Render UI Functions ---
+        function renderMode1(data) {
+            document.getElementById('outputTitle').innerText = "💡 Ide Konten Ditemukan";
+            const container = document.getElementById('outputContent');
+            container.innerHTML = '<p class="text-sm text-gray-600 mb-4">Pilih salah satu ide untuk dikembangkan (Mode 2):</p>';
+            
+            const grid = document.createElement('div');
+            grid.className = "grid grid-cols-1 md:grid-cols-2 gap-4";
+
+            data.daftar_ide.forEach((ide, index) => {
+                const card = document.createElement('div');
+                card.className = "border rounded-lg p-4 hover:shadow-lg transition cursor-pointer bg-blue-50 hover:bg-blue-100 border-blue-200";
+                card.onclick = () => generateContent("2", ide);
+                card.innerHTML = `
+                    <h3 class="font-bold text-lg text-blue-800 mb-2">${ide.judul_ide}</h3>
+                    <p class="text-xs text-gray-700 mb-1"><strong>Format:</strong> ${ide.format_viral}</p>
+                    <p class="text-xs text-gray-700 mb-1"><strong>Angle:</strong> ${ide.angle}</p>
+                    <p class="text-xs text-gray-700 mb-1"><strong>Gap:</strong> ${ide.curiosity_gap}</p>
+                    <div class="mt-2 text-xs font-semibold text-green-700">Engagement: ${ide.potensi_engagement}</div>
+                `;
+                grid.appendChild(card);
+            });
+            container.appendChild(grid);
+        }
+
+        function renderMode23(data) {
+            document.getElementById('outputTitle').innerText = "🚀 Konten Siap Posting";
+            const container = document.getElementById('outputContent');
+            
+            container.innerHTML = `
+                <div class="bg-gray-50 border p-4 rounded mb-4">
+                    <h3 class="font-bold text-lg mb-2">Caption Copy</h3>
+                    <p class="whitespace-pre-wrap text-gray-800 font-medium">${data.curiosity_gap_hook}</p>
+                    <br/>
+                    <p class="whitespace-pre-wrap text-gray-800">${data.versi_dengan_emoji_optimal}</p>
+                    <br/>
+                    <p class="font-bold text-blue-700">${data.cta}</p>
+                    <p class="mt-2 text-blue-500">${data.hashtag.join(" ")}</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div class="border p-3 rounded">
+                        <h4 class="font-bold border-b pb-1 mb-2 text-indigo-700">N.I.C.E Breakdown</h4>
+                        <p><strong>New:</strong> ${data.isi_konten_nice.new}</p>
+                        <p><strong>Interesting:</strong> ${data.isi_konten_nice.interesting}</p>
+                        <p><strong>Clear:</strong> ${data.isi_konten_nice.clear}</p>
+                        <p><strong>Engaging:</strong> ${data.isi_konten_nice.engaging}</p>
+                    </div>
+                    <div class="border p-3 rounded">
+                        <h4 class="font-bold border-b pb-1 mb-2 text-indigo-700">Metadata</h4>
+                        <p><strong>Format:</strong> ${data.format_viral_dipakai}</p>
+                        <p><strong>Ringkasan:</strong> ${data.ringkasan_caption}</p>
+                        <p class="mt-2 font-bold">Ide Lanjutan:</p>
+                        <ul class="list-disc pl-4 text-xs">${data.ide_konten_lanjutan.map(i => `<li>${i}</li>`).join('')}</ul>
+                    </div>
+                </div>
+
+                <div class="mt-4 border-t pt-4">
+                    <h4 class="font-bold text-purple-700 flex items-center gap-2"><i class="fa-solid fa-image"></i> Image Prompt (Cinematic)</h4>
+                    <p class="bg-purple-50 p-3 rounded text-sm italic border border-purple-200 mt-2">${data.prompt_gambar}</p>
+                </div>
+            `;
+        }
+
+        // --- LocalStorage History ---
+        function saveHistory(topic, type, data) {
+            const entry = { date: new Date().toLocaleString(), topic, type, data };
+            historyData.unshift(entry);
+            if (historyData.length > 20) historyData.pop(); // Keep last 20
+            localStorage.setItem('fbGenHistory', JSON.stringify(historyData));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            list.innerHTML = '';
+            historyData.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = "border-b pb-2 cursor-pointer hover:bg-gray-50 p-2 rounded";
+                div.onclick = () => restoreHistory(index);
+                div.innerHTML = `
+                    <div class="font-bold text-blue-700">${item.topic}</div>
+                    <div class="text-xs text-gray-500">${item.type} | ${item.date}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function restoreHistory(index) {
+            const item = historyData[index];
+            document.getElementById('outputContainer').classList.remove('hidden');
+            document.getElementById('jsonDebug').textContent = JSON.stringify(item.data, null, 2);
+            document.getElementById('jsonDebug').classList.remove('hidden');
+            
+            if (item.type.includes("Mode 1")) {
+                renderMode1(item.data);
+            } else {
+                renderMode23(item.data);
+            }
+        }
+
+        function clearHistory() {
+            if(confirm("Hapus semua history?")) {
+                localStorage.removeItem('fbGenHistory');
+                historyData = [];
+                renderHistory();
+            }
+        }
+
+        function copyToClipboard() {
+            const text = document.getElementById('jsonDebug').textContent;
+            navigator.clipboard.writeText(text).then(() => alert("JSON berhasil disalin!"));
+        }
+    </script>
+</body>
+</html>
